@@ -1,0 +1,212 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import logging
+import os
+import argparse
+import signal
+
+import xlrd
+import xlsxwriter
+from selenium.webdriver import Firefox
+
+from pages import KaskoCalcPage
+
+
+PAGE_LOAD_TIMEOUT = 60
+
+logging.basicConfig(format=("%(asctime)s  %(levelname)-8s "
+                            "%(module)-15s %(message)s"),
+                    level=logging.DEBUG)
+logging.getLogger(
+    "selenium.webdriver.remote.remote_connection").setLevel(logging.WARNING)
+
+
+def load(filename):
+    logging.debug("Loading data from '%s'", filename)
+    workbook = xlrd.open_workbook(filename)
+    sheet = workbook.sheet_by_index(0)
+
+    data = []
+    if sheet.nrows > 1:
+        for row in range(sheet.nrows)[1:]:
+            data.append({
+                "city": sheet.cell_value(row, 0),
+                "brand": sheet.cell_value(row, 1),
+                "year": int(sheet.cell_value(row, 2)),
+                "model": sheet.cell_value(row, 3),
+                "car_run": sheet.cell_value(row, 4),
+                "autostart": sheet.cell_value(row, 5),
+                "price": int(sheet.cell_value(row, 6)),
+                "region": sheet.cell_value(row, 7),
+                "is_credit": sheet.cell_value(row, 8),
+                "bank": sheet.cell_value(row, 9),
+                "antitheft": sheet.cell_value(row, 10),
+                "antitheft_model": sheet.cell_value(row, 11),
+                "nolimit": sheet.cell_value(row, 12),
+                "driver_age": [
+                    int(float(age))
+                    for age in str(sheet.cell_value(row, 13)).split(';')
+                    if age],
+                "driver_experience": [
+                    int(float(exp))
+                    for exp in str(sheet.cell_value(row, 14)).split(';')
+                    if exp],
+                "driver_marital_status": [
+                    ms
+                    for ms in str(sheet.cell_value(row, 15)).split(';')
+                    if ms],
+                "driver_has_children": [
+                    hc
+                    for hc in str(sheet.cell_value(row, 16)).split(';')
+                    if hc],
+                "driver_num_of_claims": [
+                    noc.split('.')[0]
+                    for noc in str(sheet.cell_value(row, 17)).split(';')
+                    if noc],
+                "franchise": sheet.cell_value(row, 18)
+            })
+
+    logging.debug("Data has been loaded (%d rows)", len(data))
+
+    return data
+
+
+def report(filename, results):
+    logging.debug("Creating report ...")
+    workbook_in = xlrd.open_workbook(filename)
+    sheet_in = workbook_in.sheet_by_index(0)
+
+    out = "%s.out.xlsx" % os.path.basename(filename).split('.')[0]
+    workbook_out = xlsxwriter.Workbook(out)
+    sheet_out = workbook_out.add_worksheet()
+
+    for row in range(sheet_in.nrows):
+        for col in range(sheet_in.ncols):
+            sheet_out.write(row, col, sheet_in.cell_value(row, col))
+
+        col = sheet_in.ncols
+        if 0 < row <= len(results):
+            result = results[row - 1]
+            if isinstance(result, list):
+                sheet_out.write(row, col, result[0])
+                sheet_out.write(row, col + 1, result[1])
+            else:
+                sheet_out.write(row, col, results[row - 1])
+
+    workbook_out.close()
+    logging.debug("Report has been created: '%s'", out)
+
+
+def calculate(params):
+    logging.debug("Starting calculation: params => %s", params)
+
+    driver = None
+    result = None
+
+    for attempt in range(3):
+        if stopped:
+            break
+
+        logging.debug("Attempt #%d...", (attempt + 1))
+
+        try:
+            driver = Firefox()
+            driver.maximize_window()
+            logging.debug("Firefox started")
+
+            driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
+            logging.debug("Set page_load_timeout=%d", PAGE_LOAD_TIMEOUT)
+
+            page = KaskoCalcPage(driver)
+            logging.debug("Opening '%s'", KaskoCalcPage.URL)
+            page.get(KaskoCalcPage.URL)
+
+            page.city(params["city"])
+            page.only_kasko()
+            page.brand(params["brand"])
+            page.year(params["year"])
+            page.model(params["model"])
+            page.body_type()
+            page.car_run(params["car_run"])
+            page.power()
+            page.autostart(params["autostart"])
+            page.price(params["price"])
+            page.region(params["region"])
+            page.is_credit(params["is_credit"])
+            if params["is_credit"] == "Да":
+                page.bank(params["bank"])
+            page.antitheft(params["antitheft"])
+            if params["antitheft"] != "Не установлен":
+                page.antitheft_model(params["antitheft_model"])
+            page.webdriver.execute_script("window.scrollTo(0, 0);")
+            if params["nolimit"] == "Да":
+                page.nolimit()
+            else:
+                for i in range(len(params["driver_age"])):
+                    if i > 0:
+                        page.add_driver.click()
+                    page.driver_age(
+                        i, params["driver_age"][i])
+                    page.driver_experience(
+                        i, params["driver_experience"][i])
+                    page.driver_marital_status(
+                        i, params["driver_marital_status"][i])
+                    page.driver_has_children(
+                        i, params["driver_has_children"][i])
+                    if params["driver_num_of_claims"]:
+                        page.driver_num_of_claims(
+                            i, params["driver_num_of_claims"][i])
+            page.calculate.click()
+            page.wait_for_preloader()
+            page.franchise(params["franchise"])
+
+            result = [page.total, page.options]
+
+            break
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            logging.exception(e)
+            result = "%s" % e
+            if attempt == 2:
+                break
+        finally:
+            if driver is not None:
+                driver.quit()
+
+    logging.debug("Calculation has been finished. Result => %s", result)
+
+    return result
+
+
+stopped = False
+
+
+def main():
+    def sigint_handler(signum, frame):
+        global stopped
+
+        logging.info("Got signal: signum=%d, frame=%s", signum, frame)
+        stopped = True
+
+    signal.signal(signal.SIGINT, sigint_handler)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("filename", help="excel-file with input data")
+    args = parser.parse_args()
+
+    if not os.path.exists(args.filename):
+        parser.error("File '%s' not exists" % args.filename)
+
+    results = []
+    for data in load(args.filename):
+        if stopped:
+            break
+        results.append(calculate(data))
+
+    report(args.filename, results)
+
+
+if __name__ == "__main__":
+    main()
