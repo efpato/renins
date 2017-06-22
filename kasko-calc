@@ -150,10 +150,10 @@ def calculate(params):
                         i, params["driver_age"][i])
                     page.driver_experience(
                         i, params["driver_experience"][i])
-                    page.driver_marital_status(
-                        i, params["driver_marital_status"][i])
                     page.driver_has_children(
                         i, params["driver_has_children"][i])
+                    page.driver_marital_status(
+                        i, params["driver_marital_status"][i])
                     if params["driver_num_of_claims"]:
                         page.driver_num_of_claims(
                             i, params["driver_num_of_claims"][i])

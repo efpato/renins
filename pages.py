@@ -28,6 +28,10 @@ class KaskoCalcPage(PageObject):
             visibility_of_element_located(
                 (By.CSS_SELECTOR, "div.calc-alert_preloader"))
         )
+        WebDriverWait(self.webdriver, WAIT_TIMEOUT).until_not(
+            visibility_of_element_located(
+                (By.CSS_SELECTOR, "div.calc-alert__container"))
+        )
 
     def _checkbox(self, value):
         if not value:
