@@ -76,7 +76,7 @@ class KaskoCalcPage(PageObject):
         self.wait_for_preloader()
 
     def _textbox(self, name, value):
-        if not value:
+        if value is None and not str(value):
             return
 
         locator = (By.XPATH, "//input[@name='%s']" % name)
