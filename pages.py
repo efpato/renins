@@ -95,7 +95,7 @@ class KaskoCalcPage(PageObject):
                 self._label("additionalSubRegions[0]", region.strip())
 
     def only_kasko(self):
-        self._label("PolicyType[0]", "Только КАСКО")
+        self._label("PolicyType[0]", "КАСКО")
 
     def brand(self, value):
         self._label("vBrand[0]", value)
