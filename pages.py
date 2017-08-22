@@ -95,6 +95,7 @@ class KaskoCalcPage(PageObject):
                 self._label("additionalSubRegions[0]", region.strip())
 
     def only_kasko(self):
+        self.webdriver.execute_script('$("div.dbck_lightbox").hide();')
         self._label("PolicyType[0]", "КАСКО")
 
     def brand(self, value):
@@ -168,12 +169,14 @@ class KaskoCalcPage(PageObject):
 
     @property
     def total(self):
-        return self.webdriver.find_element_by_xpath(
-            "//div[@class='rn-price-slider--price']").text
+        return float(self.webdriver.find_element_by_xpath(
+            "//div[@data-id='lblCalculatedCost[0]']"
+        ).text.strip().replace(' ', '')) / 100
 
     @property
     def options(self):
         opts = self.webdriver.find_elements_by_xpath(
             ("//input[contains(@class, 'calc-checkbox__input_checked')]"
-             "/../../../../..//span[@class='calc-packages__cell-caption']"))
+             "[not(@disabled)]/../.."
+             "//span[@class='calc-options__policy-list-item-caption-text']"))
         return ";".join([opt.text for opt in opts])
